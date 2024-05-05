@@ -6,3 +6,4 @@ plotly
 pandas
 textblob
 gunicorn
+networkx
