@@ -20,6 +20,7 @@ df['year'] = df['date'].dt.year
 df['day_of_week'] = df['date'].dt.dayofweek
 df['day_name'] = df['date'].dt.day_name()
 df['is_weekend'] = df['date'].dt.dayofweek.isin([5, 6]).map({True: 'Weekend', False: 'Weekday'})
+df['hour'] = df['date'].dt.hour
 
 # Add tweet length column
 df['tweet_length'] = df['tweet'].apply(len)
@@ -86,26 +87,11 @@ app.layout = html.Div([
     html.H2("Heatmap"),
     dcc.Graph(id='heatmap'),
 
-    html.H2("Tweet Count by Day of Week"),
-    dcc.Graph(id='tweet-count-by-day'),
+    html.H2("Tweet Count"),
+    dcc.Graph(id='tweet-count'),
 
-    html.H2("Tweet Length Distribution"),
-    dcc.Graph(id='tweet-length-dist'),
-
-    html.H2("Word Count Distribution"),
-    dcc.Graph(id='word-count-dist'),
-
-    html.H2("Polarity Distribution"),
-    dcc.Graph(id='polarity-dist'),
-
-    html.H2("Subjectivity Distribution"),
-    dcc.Graph(id='subjectivity-dist'),
-
-    html.H2("Mention Count Distribution"),
-    dcc.Graph(id='mention-count-dist'),
-
-    html.H2("Hashtag Count Distribution"),
-    dcc.Graph(id='hashtag-count-dist'),
+    html.H2("Association Graph"),
+    dcc.Graph(id='association-graph'),
 ])
 
 # Callbacks to update the graphs based on the filter selections
@@ -113,13 +99,8 @@ app.layout = html.Div([
     Output('trend-from-date', 'figure'),
     Output('sentiment-by-country', 'figure'),
     Output('heatmap', 'figure'),
-    Output('tweet-count-by-day', 'figure'),
-    Output('tweet-length-dist', 'figure'),
-    Output('word-count-dist', 'figure'),
-    Output('polarity-dist', 'figure'),
-    Output('subjectivity-dist', 'figure'),
-    Output('mention-count-dist', 'figure'),
-    Output('hashtag-count-dist', 'figure'),
+    Output('tweet-count', 'figure'),
+    Output('association-graph', 'figure'),
     Input('month-filter', 'value'),
     Input('day-of-week-filter', 'value'),
     Input('weekday-weekend-filter', 'value')
@@ -140,26 +121,80 @@ def update_graphs(selected_month, selected_day_of_week, selected_weekday_weekend
     # Recalculate necessary data for the graphs based on the filtered DataFrame
     daily_tweet_count = filtered_df.groupby('date').size().reset_index(name='tweet_count')
     country_sentiment = filtered_df.groupby('country')['polarity'].mean().reset_index(name='avg_sentiment')
-    numerical_columns = ['tweet_length', 'hashtag_count', 'mention_count', 'word_count', 'polarity', 'subjectivity']
+    numerical_columns = ['tweet_length', 'hashtag_count', 'mention_count', 'word_count', 'polarity', 'subjectivity', 'hour']
     corr = filtered_df[numerical_columns].corr()
     day_of_week_tweet_count = filtered_df['day_of_week'].value_counts().reset_index()
     day_of_week_tweet_count.columns = ['day_of_week', 'tweet_count']
 
-    # Create updated figures based on the filtered data
-    fig1 = px.line(daily_tweet_count, x='date', y='tweet_count', title='Trend of Tweet Count over Time')
-    fig2 = px.choropleth(country_sentiment, locations='country', locationmode='country names', color='avg_sentiment',
-                         hover_name='country', color_continuous_scale='RdYlGn', title='Average Sentiment by Country')
-    fig3 = go.Figure(data=go.Heatmap(z=corr.values, x=corr.index.values, y=corr.columns.values))
-    fig4 = px.bar(day_of_week_tweet_count, x='day_of_week', y='tweet_count', title='Tweet Count by Day of Week')
+    G = nx.from_pandas_edgelist(filtered_df, 'source', 'target', create_using=nx.DiGraph)
 
-    fig5 = px.histogram(filtered_df, x='tweet_length', title='Tweet Length Distribution')
-    fig6 = px.histogram(filtered_df, x='word_count', title='Word Count Distribution')
-    fig7 = px.histogram(filtered_df, x='polarity', title='Polarity Distribution')
-    fig8 = px.histogram(filtered_df, x='subjectivity', title='Subjectivity Distribution')
-    fig9 = px.histogram(filtered_df, x='mention_count', title='Mention Count Distribution')
-    fig10 = px.histogram(filtered_df, x='hashtag_count', title='Hashtag Count Distribution')
+    edge_x = []
+    edge_y = []
 
-    return fig1, fig2, fig3, fig4, fig5, fig6, fig7, fig8, fig9, fig10
+    for edge in G.edges():
+        x0, y0 = G.nodes[edge[0]]['pos']
+        x1, y1 = G.nodes[edge[1]]['pos']
+        edge_x.extend([x0, x1, None])
+        edge_y.extend([y0, y1, None])
+
+    edge_trace = go.Scatter(
+        x=edge_x, y=edge_y,
+        line=dict(width=0.5, color='#888'),
+        hoverinfo='none',
+        mode='lines')
+
+    node_x = []
+    node_y = []
+
+    for node in G.nodes():
+        x, y = G.nodes[node]['pos']
+        node_x.append(x)
+        node_y.append(y)
+
+    node_trace = go.Scatter(
+        x=node_x, y=node_y,
+        mode='markers',
+        hoverinfo='text',
+        marker=dict(
+            showscale=True,
+            colorscale='YlGnBu',
+            reversescale=True,
+            color=[],
+            size=10,
+            colorbar=dict(
+                thickness=15,
+                title='Node Connections',
+                xanchor='left',
+                titleside='right'
+            ),
+            line_width=2))
+
+    node_adjacencies = []
+    node_text = []
+    for node, adjacencies in enumerate(G.adjacency()):
+        node_adjacencies.append(len(adjacencies[1]))
+        node_text.append(f'Connections: {len(adjacencies[1])}')
+
+    node_trace.marker.color = node_adjacencies
+    node_trace.text = node_text
+
+    association_graph = go.Figure(data=[edge_trace, node_trace],
+                                  layout=go.Layout(
+                                      title='Association Graph',
+                                      titlefont_size=16,
+                                      showlegend=False,
+                                      hovermode='closest',
+                                      margin=dict(b=20, l=5, r=5, t=40),
+                                      annotations=[dict(
+                                          text="Python code: <a href='https://plotly.com/python/network-graphs/'> https://plotly.com/python/network-graphs/</a>",
+                                          showarrow=False,
+                                          xref="paper", yref="paper",
+                                          x=0.005, y=-0.002)],
+                                      xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+                                      yaxis=dict(showgrid=False, zeroline=False, showticklabels=False))
+                                  )
+
+    return fig1, fig2, fig3, fig4, association_graph
 
 # Run the app
 if __name__ == '__main__':
