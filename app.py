@@ -87,7 +87,25 @@ app.layout = html.Div([
     dcc.Graph(id='heatmap'),
 
     html.H2("Tweet Count by Day of Week"),
-    dcc.Graph(id='tweet-count-by-day')
+    dcc.Graph(id='tweet-count-by-day'),
+
+    html.H2("Tweet Length Distribution"),
+    dcc.Graph(id='tweet-length-dist'),
+
+    html.H2("Word Count Distribution"),
+    dcc.Graph(id='word-count-dist'),
+
+    html.H2("Polarity Distribution"),
+    dcc.Graph(id='polarity-dist'),
+
+    html.H2("Subjectivity Distribution"),
+    dcc.Graph(id='subjectivity-dist'),
+
+    html.H2("Mention Count Distribution"),
+    dcc.Graph(id='mention-count-dist'),
+
+    html.H2("Hashtag Count Distribution"),
+    dcc.Graph(id='hashtag-count-dist'),
 ])
 
 # Callbacks to update the graphs based on the filter selections
@@ -96,6 +114,12 @@ app.layout = html.Div([
     Output('sentiment-by-country', 'figure'),
     Output('heatmap', 'figure'),
     Output('tweet-count-by-day', 'figure'),
+    Output('tweet-length-dist', 'figure'),
+    Output('word-count-dist', 'figure'),
+    Output('polarity-dist', 'figure'),
+    Output('subjectivity-dist', 'figure'),
+    Output('mention-count-dist', 'figure'),
+    Output('hashtag-count-dist', 'figure'),
     Input('month-filter', 'value'),
     Input('day-of-week-filter', 'value'),
     Input('weekday-weekend-filter', 'value')
@@ -116,7 +140,7 @@ def update_graphs(selected_month, selected_day_of_week, selected_weekday_weekend
     # Recalculate necessary data for the graphs based on the filtered DataFrame
     daily_tweet_count = filtered_df.groupby('date').size().reset_index(name='tweet_count')
     country_sentiment = filtered_df.groupby('country')['polarity'].mean().reset_index(name='avg_sentiment')
-    numerical_columns = ['tweet_length', 'hashtag_count', 'mention_count', 'word_count', 'polarity', 'subjectivity', 'hour']
+    numerical_columns = ['tweet_length', 'hashtag_count', 'mention_count', 'word_count', 'polarity', 'subjectivity']
     corr = filtered_df[numerical_columns].corr()
     day_of_week_tweet_count = filtered_df['day_of_week'].value_counts().reset_index()
     day_of_week_tweet_count.columns = ['day_of_week', 'tweet_count']
@@ -128,7 +152,14 @@ def update_graphs(selected_month, selected_day_of_week, selected_weekday_weekend
     fig3 = go.Figure(data=go.Heatmap(z=corr.values, x=corr.index.values, y=corr.columns.values))
     fig4 = px.bar(day_of_week_tweet_count, x='day_of_week', y='tweet_count', title='Tweet Count by Day of Week')
 
-    return fig1, fig2, fig3, fig4
+    fig5 = px.histogram(filtered_df, x='tweet_length', title='Tweet Length Distribution')
+    fig6 = px.histogram(filtered_df, x='word_count', title='Word Count Distribution')
+    fig7 = px.histogram(filtered_df, x='polarity', title='Polarity Distribution')
+    fig8 = px.histogram(filtered_df, x='subjectivity', title='Subjectivity Distribution')
+    fig9 = px.histogram(filtered_df, x='mention_count', title='Mention Count Distribution')
+    fig10 = px.histogram(filtered_df, x='hashtag_count', title='Hashtag Count Distribution')
+
+    return fig1, fig2, fig3, fig4, fig5, fig6, fig7, fig8, fig9, fig10
 
 # Run the app
 if __name__ == '__main__':
